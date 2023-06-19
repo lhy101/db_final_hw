@@ -1,7 +1,5 @@
 ﻿# db_final_hw
 
-请用该repo替换`flomige`目录~
-
 ## 代码
 
 已将环境与第五名的代码封装好，可以直接从docker上拉取：
@@ -10,20 +8,29 @@
 docker pull lhygood11229/db_final_hw:1.0.0
 ```
 
-然后，可以创建一个名为`hw`的容器，并运行：
+然后，可以创建一个名为`hw`的容器，运行：
 
 ```shell
-docker run -it --name hw db_final_hw:1.0.0
+docker run -it --name hw lhygood11229/db_final_hw:1.0.0
 ```
 
 ## 测试
 
 所有代码均已放在`/home`文件夹下，其中有两个子文件夹：`/home/submission`文件夹用于跑workload进行测试（目前只有`workload/small`，剩下的workload在老师给的网盘上，有12GB......我尝试下载但是失败了）；`/home/flomige/`则存放了排行榜第五的代码。
 
-在`/home/submission`文件夹下运行`./runTestharness.sh`，默认跑`/home/submission/workload/small`并输出总耗时（单位ms）：
+**首先，请用该repo替换`/home/flomige`目录。**
+并编译代码（每次修改代码后，也需要再重新编译一遍）：
+```shell
+cd /home/flomige
+./compile.sh
+
+```
+
+之后，在`/home/submission`文件夹下运行`./runTestharness.sh`即可。其默认跑`/home/submission/workload/small`并输出总耗时（单位ms）：
 
 ```shell
-root@3f35b0cebf8b:/home/submission# ./runTestharness.sh
+cd /home/submission
+./runTestharness.sh
 execute small ...
 59
 ```
