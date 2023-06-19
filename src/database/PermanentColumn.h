@@ -23,6 +23,8 @@ namespace database{
     template<uint32_t TABLE_PARTITION_SIZE>
     class Table;
 
+    const int slice_num = 10;
+
     template<uint32_t TABLE_PARTITION_SIZE>
     class PermanentColumn : public RawColumn<TABLE_PARTITION_SIZE> {
 
@@ -38,6 +40,8 @@ namespace database{
 
         public:
 
+            uint64_t* histogram = NULL;
+
             PermanentColumn(
                 const uint32_t id,
                 const std::string& name,
@@ -50,9 +54,13 @@ namespace database{
                 if(_table==nullptr){
                     throw std::invalid_argument("Column points to NULL table");
                 }
+                // initialize the histogram
+                histogram = (uint64_t*)calloc(slice_num, sizeof(uint64_t));
             }
 
             ~PermanentColumn(){
+                free(histogram);
+                histogram = NULL;
             }
 
             const std::string& getName() const {

@@ -66,9 +66,11 @@ int main() {
         StatisticsBuilder<2048> statisticsBuilder;
 
         // calculate min and max
+        // std::cout << "calculateMinAndMax" << std::endl;
         statisticsBuilder.calculateMinAndMax(database, true);
 
         // detect distinct columns
+        // std::cout << "calculateDistinct" << std::endl;
         statisticsBuilder.calculateDistinct(database, false);
 
         // read queries

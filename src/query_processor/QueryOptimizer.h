@@ -95,6 +95,7 @@ namespace query_processor {
             static uint64_t estimateFilterCardinality(
                 uint64_t min,
                 uint64_t max,
+                uint64_t* histogram,
                 uint64_t cardinality, // notNullCount
                 FilterMetaData::Comparison filterPredicate,
                 uint64_t constant
@@ -103,22 +104,32 @@ namespace query_processor {
                 if (constant < min || constant > max) {
                     return 0;
                 }
-                // calculate the cardinality of the active domain
-                double activeDomain = static_cast<double>(max - min + 1);
-                // estimated cardinality for one value
-                double oneValueCount = static_cast<double>(cardinality) / activeDomain;
-                // return the estimated cardinality after the filter predicate
+                uint64_t slice_size = (max - min + 1) / database::slice_num;
+                uint64_t slice_idx = (constant - min) / slice_size;
+                if(slice_idx >= database::slice_num)
+                    slice_idx = database::slice_num - 1;
+                uint64_t lower_bound = min + slice_idx * slice_size;
+                uint64_t upper_bound = slice_idx == database::slice_num - 1 ? max : (slice_idx + 1) * slice_size;
+                slice_size = upper_bound - lower_bound;
                 switch (filterPredicate) {
                     case FilterMetaData::Comparison::Less : {
                         // number of values < constant, i.e., [min, constant): constant - min
-                        return static_cast<double>(constant - min)  * oneValueCount;
+                        double sum = 0;
+                        for (uint64_t i = 0; i < slice_idx; i++)
+                            sum += histogram[i];
+                        sum += static_cast<double>(constant - lower_bound) / slice_size * histogram[slice_idx];
+                        return sum;
                     };
                     case FilterMetaData::Comparison::Equal : {
-                        return oneValueCount;
+                        return static_cast<double>(histogram[slice_idx]) / slice_size;
                     };
                     case FilterMetaData::Comparison::Greater : {
                         // number of values > constant, i.e., (constant, max]: max - constant
-                        return static_cast<double>(max - constant) * oneValueCount;
+                        double sum = 0;
+                        for (uint64_t i = slice_idx + 1; i < database::slice_num; i++)
+                            sum += histogram[i];
+                        sum += static_cast<double>(upper_bound - constant - 1) / slice_size * histogram[slice_idx];
+                        return sum;
                     };
                     default : throw std::runtime_error("This filter predicate is not supported.");
                 }
@@ -146,6 +157,7 @@ namespace query_processor {
                         estimatedFilterCardinality = estimateFilterCardinality(
                             columnTyped->getLatestMinValue(),
                             columnTyped->getLatestMaxValue(),
+                            columnTyped->histogram,
                             estimatedFilterCardinality,
                             filterPredicate._comparison,
                             filterPredicate._constant

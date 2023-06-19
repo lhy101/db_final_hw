@@ -62,18 +62,27 @@ class StatisticsBuilder {
                 void execute() {
                     uint64_t minValue = _permanentColumn->getLatestMinValue();
                     uint64_t maxValue = _permanentColumn->getLatestMaxValue();
+                    uint64_t slice_size = (maxValue - minValue + 1) / database::slice_num;
+                    bool result = true;
                     std::vector<bool> bitset(maxValue - minValue + 1, false);
                     uint64_t* currentValue = reinterpret_cast<uint64_t*>(_permanentColumn->getAddr());
                     for (uint32_t i = 0; i < _permanentColumn->getLatestCardinality(); ++i) {
                         if (bitset[currentValue[i] - minValue]) {
                             // duplicate found, i.e., column is not distinct
                             _permanentColumn->setDistinct(false);
-                            return;
+                            result = false;
                         }
                         bitset[currentValue[i] - minValue] = true;
+                        // set the histogram
+                        uint64_t slice_idx = (currentValue[i] - minValue) / slice_size;
+                        if(slice_idx >= database::slice_num)
+                            slice_idx = database::slice_num - 1;
+                        _permanentColumn->histogram[slice_idx]++;
+                        // std::cout << _permanentColumn->histogram[slice_idx] << std::endl;
                     }
                     // all values are checked and no duplicate found, i.e., column is distinct
-                    _permanentColumn->setDistinct(true);
+                    if (result)
+                        _permanentColumn->setDistinct(true);
                 }
         };
 
