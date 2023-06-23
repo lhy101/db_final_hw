@@ -45,16 +45,69 @@ namespace query_processor {
         // TODO: eliminate notNullCount
 
         private:
+            // TODO
+            // returns the estimated filter cardinality according to the min value, max value, not null count and cardinality of the column
+            static uint64_t estimateFilterCardinality(
+                uint64_t min,
+                uint64_t max,
+                uint64_t* histogram,
+                uint64_t cardinality, // notNullCount
+                FilterMetaData::Comparison filterPredicate,
+                uint64_t constant
+            ){
+                // if the constant is not in the active domain, then this filter will eliminate all values
+                if (constant < min || constant > max) {
+                    return 0;
+                }
+                uint64_t slice_size = (max - min + 1) / database::slice_num;
+                uint64_t cur_slice_num = database::slice_num;
+                while(slice_size == 0)
+                {
+                    cur_slice_num /= 2;
+                    slice_size = (max - min + 1) / cur_slice_num;
+                }
+                uint64_t slice_idx = (constant - min) / slice_size;
+                if(slice_idx >= cur_slice_num)
+                    slice_idx = cur_slice_num - 1;
+                uint64_t lower_bound = min + slice_idx * slice_size;
+                uint64_t upper_bound = slice_idx == cur_slice_num - 1 ? max : (slice_idx + 1) * slice_size;
+                slice_size = upper_bound - lower_bound;
+                switch (filterPredicate) {
+                    case FilterMetaData::Comparison::Less : {
+                        // number of values < constant, i.e., [min, constant): constant - min
+                        double sum = 0;
+                        for (uint64_t i = 0; i < slice_idx; i++)
+                            sum += histogram[i];
+                        sum += static_cast<double>(constant - lower_bound) / slice_size * histogram[slice_idx];
+                        return sum;
+                    };
+                    case FilterMetaData::Comparison::Equal : {
+                        return static_cast<double>(histogram[slice_idx]) / slice_size;
+                    };
+                    case FilterMetaData::Comparison::Greater : {
+                        // number of values > constant, i.e., (constant, max]: max - constant
+                        double sum = 0;
+                        for (uint64_t i = slice_idx + 1; i < cur_slice_num; i++)
+                            sum += histogram[i];
+                        sum += static_cast<double>(upper_bound - constant - 1) / slice_size * histogram[slice_idx];
+                        return sum;
+                    };
+                    default : throw std::runtime_error("This filter predicate is not supported.");
+                }
+            }
+
             // returns the estimated join selectivity according to the min value, max value and cardinality of the left and right relation
             static double estimateJoinSelectivity(
                 uint64_t leftMin,
                 uint64_t leftMax,
                 uint64_t leftNotNullCount,
                 uint64_t leftCardinality,
+                uint64_t* leftHistogram,
                 uint64_t rightMin,
                 uint64_t rightMax,
                 uint64_t rightNotNullCount,
-                uint64_t rightCardinality
+                uint64_t rightCardinality,
+                uint64_t* rightHistogram
             ){
                 // ideas from query compiler by moerkotte: beginning at page 427 with section 24.3 'a first logical profile and its propagation'
 
@@ -74,65 +127,22 @@ namespace query_processor {
                 // if the left relation [leftMin, leftMax] is not completely included in the join range [joinMin, joinMax],
                 // then reduce the cardinality of the left relation relatively to the join range by assuming uniform distribution
                 if (joinMin != leftMin || joinMax != leftMax) {
-                    leftNotNullCount = (static_cast<double>(joinMax - joinMin + 1) / static_cast<double>(leftMax - leftMin + 1))
-                         * static_cast<double>(leftNotNullCount);
+                    double lowerHistogram = estimateFilterCardinality(leftMin, leftMax, leftHistogram, leftNotNullCount, FilterMetaData::Comparison::Greater, joinMin - 1);
+                    double upperHistogram = estimateFilterCardinality(leftMin, leftMax, leftHistogram, leftNotNullCount, FilterMetaData::Comparison::Greater, joinMax + 1);
+                    leftNotNullCount = lowerHistogram - upperHistogram;
                 }
                 // if the right relation [rightMin, rightMax] is not completely included in the join range [joinMin, joinMax],
                 // then reduce the cardinality of the right relation relatively to the join range by assuming uniform distribution
                 if (joinMin != rightMin || joinMax != rightMax) {
-                    rightNotNullCount = (static_cast<double>(joinMax - joinMin + 1) / static_cast<double>(rightMax - rightMin + 1))
-                         * static_cast<double>(rightNotNullCount);
+                    double lowerHistogram = estimateFilterCardinality(rightMin, rightMax, rightHistogram, rightNotNullCount, FilterMetaData::Comparison::Greater, joinMin - 1);
+                    double upperHistogram = estimateFilterCardinality(rightMin, rightMax, rightHistogram, rightNotNullCount, FilterMetaData::Comparison::Greater, joinMax + 1);
+                    rightNotNullCount = lowerHistogram - upperHistogram;
                 }
                 // Query Compile: Page 437 (Profile Propagation for Join: Regular Join)
                 // estimate cardinality after join operation according to the reduced left and right join cardinality
                 uint64_t joinCardinality = (leftNotNullCount * rightNotNullCount) / (joinMax - joinMin + 1);
                 // return estimated join selectivity by dividing the estimated join cardinality with the original maximal join cardinality (cross product)
                 return static_cast<double>(joinCardinality) / static_cast<double>(maxJoinCardinality);
-            }
-
-            // TODO
-            // returns the estimated filter cardinality according to the min value, max value, not null count and cardinality of the column
-            static uint64_t estimateFilterCardinality(
-                uint64_t min,
-                uint64_t max,
-                uint64_t* histogram,
-                uint64_t cardinality, // notNullCount
-                FilterMetaData::Comparison filterPredicate,
-                uint64_t constant
-            ){
-                // if the constant is not in the active domain, then this filter will eliminate all values
-                if (constant < min || constant > max) {
-                    return 0;
-                }
-                uint64_t slice_size = (max - min + 1) / database::slice_num;
-                uint64_t slice_idx = (constant - min) / slice_size;
-                if(slice_idx >= database::slice_num)
-                    slice_idx = database::slice_num - 1;
-                uint64_t lower_bound = min + slice_idx * slice_size;
-                uint64_t upper_bound = slice_idx == database::slice_num - 1 ? max : (slice_idx + 1) * slice_size;
-                slice_size = upper_bound - lower_bound;
-                switch (filterPredicate) {
-                    case FilterMetaData::Comparison::Less : {
-                        // number of values < constant, i.e., [min, constant): constant - min
-                        double sum = 0;
-                        for (uint64_t i = 0; i < slice_idx; i++)
-                            sum += histogram[i];
-                        sum += static_cast<double>(constant - lower_bound) / slice_size * histogram[slice_idx];
-                        return sum;
-                    };
-                    case FilterMetaData::Comparison::Equal : {
-                        return static_cast<double>(histogram[slice_idx]) / slice_size;
-                    };
-                    case FilterMetaData::Comparison::Greater : {
-                        // number of values > constant, i.e., (constant, max]: max - constant
-                        double sum = 0;
-                        for (uint64_t i = slice_idx + 1; i < database::slice_num; i++)
-                            sum += histogram[i];
-                        sum += static_cast<double>(upper_bound - constant - 1) / slice_size * histogram[slice_idx];
-                        return sum;
-                    };
-                    default : throw std::runtime_error("This filter predicate is not supported.");
-                }
             }
 
         public:
@@ -208,10 +218,12 @@ namespace query_processor {
                         leftColumn->getLatestMaxValue(),
                         leftColumn->getLatestCardinality(),
                         leftTableSearch->second._estimatedCardinalityBaseTable,
+                        leftColumn->histogram,
                         rightColumn->getLatestMinValue(),
                         rightColumn->getLatestMaxValue(),
                         rightColumn->getLatestCardinality(),
-                        rightTableSearch->second._estimatedCardinalityBaseTable
+                        rightTableSearch->second._estimatedCardinalityBaseTable,
+                        rightColumn->histogram
                     );
 
                     // no join selectivity to estimate, insert the join in the multi map

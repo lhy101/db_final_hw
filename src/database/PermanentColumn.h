@@ -23,7 +23,7 @@ namespace database{
     template<uint32_t TABLE_PARTITION_SIZE>
     class Table;
 
-    const int slice_num = 10;
+    const int slice_num = 100;
 
     template<uint32_t TABLE_PARTITION_SIZE>
     class PermanentColumn : public RawColumn<TABLE_PARTITION_SIZE> {

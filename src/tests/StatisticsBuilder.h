@@ -63,6 +63,12 @@ class StatisticsBuilder {
                     uint64_t minValue = _permanentColumn->getLatestMinValue();
                     uint64_t maxValue = _permanentColumn->getLatestMaxValue();
                     uint64_t slice_size = (maxValue - minValue + 1) / database::slice_num;
+                    uint64_t cur_slice_num = database::slice_num;
+                    while(slice_size == 0)
+                    {
+                        cur_slice_num /= 2;
+                        slice_size = (maxValue - minValue + 1) / cur_slice_num;
+                    }
                     bool result = true;
                     std::vector<bool> bitset(maxValue - minValue + 1, false);
                     uint64_t* currentValue = reinterpret_cast<uint64_t*>(_permanentColumn->getAddr());
@@ -75,8 +81,8 @@ class StatisticsBuilder {
                         bitset[currentValue[i] - minValue] = true;
                         // set the histogram
                         uint64_t slice_idx = (currentValue[i] - minValue) / slice_size;
-                        if(slice_idx >= database::slice_num)
-                            slice_idx = database::slice_num - 1;
+                        if(slice_idx >= cur_slice_num)
+                            slice_idx = cur_slice_num - 1;
                         _permanentColumn->histogram[slice_idx]++;
                         // std::cout << _permanentColumn->histogram[slice_idx] << std::endl;
                     }
