@@ -150,7 +150,7 @@ class FilterRewriter {
                     // TODO: rewrite queries
                     uint64_t constant = stoul(relCols[1]);
                     char compType = (rawPredicate[relCols[0].size()]);
-                    filters.emplace_back(Filter{relCols[0], compType, constant});
+                    _filters.emplace_back(Filter{relCols[0], compType, constant});
                 } else {
                     // parse right side
                     std::vector<std::string> rightSide;
