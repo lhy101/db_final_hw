@@ -12,20 +12,15 @@
 
 #include "../query_processor/ExecutionPlan.h"
 #include "../query_processor/PipelineBreaker.h"
+#include "./FilterRewriter.h"
+#include "./Spliter.h"
 
 #include <vector>
 #include <algorithm>
 #include <sstream>
 // #include <cassert>
 
-static const std::vector<query_processor::FilterMetaData::Comparison> comparisonTypes {
-    query_processor::FilterMetaData::Comparison::Less,
-    query_processor::FilterMetaData::Comparison::Greater,
-    query_processor::FilterMetaData::Comparison::Equal
-};
-
-inline static bool isConstant(std::string& raw) { return raw.find('.') == std::string::npos; }
-
+template<uint32_t TABLE_PARTITION_SIZE>
 class QueryInfo {
 
     private:
@@ -33,108 +28,92 @@ class QueryInfo {
         std::vector<query_processor::JoinAttributeInput> _innerEquiJoins;
         std::vector<query_processor::ProjectionMetaData> _projections;
 
+        std::map<std::string, std::string> _tabAlias;
+        bool _impossible = false;
+
         // parse relation ids <r1> <r2> ...
         void parseRelationIds(std::string& rawRelations) {
             std::vector<std::string> relationIds;
             splitString(rawRelations, relationIds, ' ');
             for (uint32_t aliasId = 0; aliasId < relationIds.size(); ++aliasId) {
                 _tables.emplace_back("R" + relationIds[aliasId], std::to_string(aliasId));
+                _tabAlias.insert(std::make_pair(std::to_string(aliasId), relationIds[aliasId]));
             }
         }
 
-        // parse predicate r1.a=r2.b
-        void parsePredicate(std::string& rawPredicate) {
-            // split predicate
-            std::vector<std::string> relCols;
-            splitPredicates(rawPredicate, relCols);
-            // assert(relCols.size() == 2);
-            // assert(!isConstant(relCols[0]) && "left side of a predicate is always a SelectInfo");
-            // parse left side
-            std::vector<std::string> leftSide;
-            splitString(relCols[0], leftSide, '.');
-            // check for filter
-            if (isConstant(relCols[1])) {
-                uint64_t constant = stoul(relCols[1]);
-                char compType = rawPredicate[relCols[0].size()];
-                // add filter to table
-                query_processor::FilterMetaData filter(leftSide[1], constant, query_processor::FilterMetaData::Comparison(compType));
-                _tables[std::stoul(leftSide[0])].addFilterPredicate(filter);
-                // add used column name to table
-                _tables[std::stoul(leftSide[0])].addUsedColumn(leftSide[1]);
-            } else {
-                // parse right side
-                std::vector<std::string> rightSide;
-                splitString(relCols[1], rightSide, '.');
+        void parseJoinPredicates(std::vector<std::pair<std::string, std::string>>& joins) {
+            for (auto& join : joins) {
+                std::vector<std::string> leftSide, rightSide;
+                splitString(join.first, leftSide, '.');
+                splitString(join.second, rightSide, '.');
                 // create join predicate
                 query_processor::JoinAttributeInput joinAttribute(leftSide[0], leftSide[1], rightSide[0], rightSide[1]);
                 // check if this join predicate was already added
                 auto it = std::find(_innerEquiJoins.begin(), _innerEquiJoins.end(), joinAttribute);
                 // add new join predicate
                 if (it == _innerEquiJoins.end()) {
-                  _innerEquiJoins.emplace_back(leftSide[0], leftSide[1], rightSide[0], rightSide[1]);
-                  // add used column name to table(s)
-                  _tables[std::stoul(leftSide[0])].addUsedColumn(leftSide[1]);
-                  _tables[std::stoul(rightSide[0])].addUsedColumn(rightSide[1]);
+                    _innerEquiJoins.emplace_back(leftSide[0], leftSide[1], rightSide[0], rightSide[1]);
+                    // add used column name to table(s)
+                    _tables[std::stoul(leftSide[0])].addUsedColumn(leftSide[1]);
+                    _tables[std::stoul(rightSide[0])].addUsedColumn(rightSide[1]);
                 }
             }
         }
 
-        // parse predicates r1.a=r2.b&r1.b=r3.c...
-        void parsePredicates(std::string& text) {
-          std::vector<std::string> predicateStrings;
-          splitString(text, predicateStrings, '&');
-          for (auto& rawPredicate : predicateStrings) {
-            parsePredicate(rawPredicate);
-          }
+        void parseFilterPredicates(std::vector<Filter>& filters) {
+            for (auto& filter : filters) {
+                // add filter to table
+                std::vector<std::string> column;
+                splitString(filter.col, column, '.');
+                query_processor::FilterMetaData filterPredicate(column[1], filter.constant, query_processor::FilterMetaData::Comparison(filter.compType));
+                _tables[std::stoul(column[0])].addFilterPredicate(filterPredicate);
+                // add used column name to table
+                _tables[std::stoul(column[0])].addUsedColumn(column[1]);
+            }
         }
 
         // parse selections r1.a r1.b r3.c...
         void parseProjections(std::string& rawProjections) {
-          std::vector<std::string> projectionStrings;
-          splitString(rawProjections, projectionStrings, ' ');
-          for (auto& rawSelect : projectionStrings) {
-            std::vector<std::string> projection;
-            splitString(rawSelect, projection, '.');
-            // assert(projection.size() == 2);
-            _projections.emplace_back(projection[0], projection[1]);
-            // add used column name to table
-            _tables[std::stoul(projection[0])].addUsedColumn(projection[1], true); // boolean indicates that it is a projection column
-          }
+            std::vector<std::string> projectionStrings;
+            splitString(rawProjections, projectionStrings, ' ');
+            for (auto& rawSelect : projectionStrings) {
+                std::vector<std::string> projection;
+                splitString(rawSelect, projection, '.');
+                // assert(projection.size() == 2);
+                _projections.emplace_back(projection[0], projection[1]);
+                // add used column name to table
+                _tables[std::stoul(projection[0])].addUsedColumn(projection[1], true); // boolean indicates that it is a projection column
+            }
         }
+
         // parse selections [RELATIONS]|[PREDICATES]|[SELECTS]
-        void parseQuery(std::string& rawQuery) {
+        void parseQuery(std::string& rawQuery, database::Database<TABLE_PARTITION_SIZE>& database) {
             std::vector<std::string> queryParts;
             splitString(rawQuery, queryParts, '|');
             // assert(queryParts.size()==3);
             parseRelationIds(queryParts[0]);
-            parsePredicates(queryParts[1]);
             parseProjections(queryParts[2]);
+
+            FilterRewriter<TABLE_PARTITION_SIZE> rewriter(database, _tabAlias);
+            std::vector<std::pair<std::string, std::string>> joins;
+            std::vector<Filter> filters;
+            
+            _impossible = rewriter.rewriteFilters(queryParts[1], joins, filters);
+            if (_impossible) {
+                return;
+            }
+            parseJoinPredicates(joins);
+            parseFilterPredicates(filters);
         }
 
     public:
         // the constructor that parses a query
-        QueryInfo(std::string rawQuery) {
-            parseQuery(rawQuery);
+        QueryInfo(std::string rawQuery, database::Database<TABLE_PARTITION_SIZE>& database) {
+            parseQuery(rawQuery, database);
         }
 
-
-        // parse a line into strings
-        static void splitString(std::string& line, std::vector<std::string>& result, const char delimiter) {
-          std::stringstream ss(line);
-          std::string token;
-          while (std::getline(ss, token, delimiter)) {
-            result.push_back(token);
-          }
-        }
-
-        // split a line into predicate strings
-        static void splitPredicates(std::string& line, std::vector<std::string>& result) {
-          for (auto cT : comparisonTypes) {
-            if (line.find(cT) != std::string::npos) {
-              splitString(line, result, cT);
-              break;
-            }
-          }
+        bool isImpossible() {
+          return _impossible;
         }
 
         // returns the table meta data
