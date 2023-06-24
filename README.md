@@ -18,7 +18,7 @@ docker run -it --name hw lhygood11229/db_final_hw:1.0.0
 
 所有代码均已放在`/home`文件夹下，其中有两个子文件夹：`/home/submission`文件夹用于跑workload进行测试（默认跑`workload/small`，可以更改`./runTestharness.sh`来选择要跑的workload）；`/home/flomige/`则存放了我们修改后的排行榜第五的代码。
 
-我们也将代码的修改放到了GitHub上：[lhy101/db_final_hw: db_final_hw (github.com)](https://github.com/lhy101/db_final_hw)，也可以从上面直接拉取代码，并在自己的环境上进行测试。**即，用该repo替换`/home/flomige`目录即可。**注意，拉取代码后要先编译（每次修改代码后，也需要再重新编译一遍）：
+我们也将代码的修改放到了GitHub上：[lhy101/db_final_hw: db_final_hw (github.com)](https://github.com/lhy101/db_final_hw)，也可以从上面直接拉取代码，并在自己的环境上进行测试。**即，用该repo替换**`/home/flomige`**目录即可**，注意拉取代码后要先编译（每次修改代码后，也需要再重新编译一遍）：
 
 ```shell
 cd /home/flomige
@@ -44,7 +44,7 @@ execute small ...
 
 代码的入口位于`tests\TestsProgrammingContest.cpp`。具体来看，整个pipeline可以分为以下三个部分：
 
-* **读取数据阶段：**从stdin读取table的数据，直到遇到输入`"Done"`为止。然后，根据table的平均行数（median table cardinality），将之后的处理分为两种情况——当行数小于等于`200000`时，认为是small workload，代码使用`partition size = 2048`的分区方式；而当行数大于`200000`时，认为是large workload，代码使用`partition size = 16384`的分区方式。
+* **读取数据阶段**：从stdin读取table的数据，直到遇到输入`"Done"`为止。然后，根据table的平均行数（median table cardinality），将之后的处理分为两种情况——当行数小于等于`200000`时，认为是small workload，代码使用`partition size = 2048`的分区方式；而当行数大于`200000`时，认为是large workload，代码使用`partition size = 16384`的分区方式。
 
   ```c++
   // smaller workload -> partition size = 2048
@@ -61,7 +61,7 @@ execute small ...
   query_processor::CAT_ENABLE_DENSE_THRESHOLD = 100000;
   ```
 
-* **数据预处理阶段：**在此阶段中，代码将所有table建立。同时，为了之后查询优化的部分，其提前计算好table中每一列的**最大值**与**最小值**，以及**不重复的元素个数**。
+* **数据预处理阶段**：在此阶段中，代码将所有table建立。同时，为了之后查询优化的部分，其提前计算好table中每一列的**最大值**与**最小值**，以及**不重复的元素个数**。
 
   ```c++
   // create database
@@ -84,7 +84,7 @@ execute small ...
   statisticsBuilder.calculateDistinct(database, false);
   ```
   
-* **SQL查询阶段：**通过profile我们可以发现，上述两个阶段均在`1s`内完成，很好地利用了题设中`1s`的间隔，来对数据做提前地处理。之后，在SQL查询阶段，其逐行读取query，并最终执行。
+* **SQL查询阶段**：通过profile我们可以发现，上述两个阶段均在`1s`内完成，很好地利用了题设中`1s`的间隔，来对数据做提前地处理。之后，在SQL查询阶段，其逐行读取query，并最终执行。
 
   ```c++
   // read queries
