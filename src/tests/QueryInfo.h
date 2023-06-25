@@ -102,7 +102,7 @@ class QueryInfo {
             parseJoinPredicates(joins);
             parseFilterPredicates(filters);
             
-            parseProjections(rewriter.rewriteProjections(queryParts[2]))
+            parseProjections(rewriter.rewriteProjections(queryParts[2]));
         }
 
     public:
