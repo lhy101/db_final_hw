@@ -1,8 +1,8 @@
-﻿﻿# Spring 2023, DB Final Homework
+# Spring 2023, DB Final Homework
 
 许珈铭、李昊洋
 
-## 1. 项目说明
+## 1 项目说明
 
 我们已将环境与第五名的代码封装好，可以直接从docker上拉取：
 
@@ -38,9 +38,9 @@ execute small ...
 59
 ```
 
-## 2. 代码解读
+## 2 代码解读
 
-### 2.1. 整体流程
+### 2.1 整体流程
 
 代码的入口位于`tests\TestsProgrammingContest.cpp`。具体来看，整个pipeline可以分为以下三个部分：
 
@@ -99,7 +99,7 @@ execute small ...
       queryRunner.addQuery(database, line);
   }
   ```
-### 2.2. 多线程
+### 2.2 多线程
 
 由于该任务提供的机器是NUMA结构，为了充分利用机器上多核CPU的性能，代码采用了多线程的方式，通过pthread接口，在每个NUMA node上创建一个线程，来独立地进行处理。
 
@@ -203,7 +203,7 @@ for(std::shared_ptr<TaskBase>& task : _taskGroup._groupTasks){
 }
 ```
 
-### 2.3. 预处理任务
+### 2.3 预处理任务
 
 这一部分由计算table中每一列的**最大值**与**最小值**，以及**不重复的元素个数**这两个小部分构成。
 
@@ -256,7 +256,7 @@ void execute() {
 
 而计算不重复元素的`DistinctCalculationTask`与之十分类似，这里就不再赘述了。
 
-### 2.4. 查询任务
+### 2.4 查询任务
 
 对于查询任务，其将一组到输入`"F"`之前的query视作一个batch，而每行query则构成这一个batch中的独立的task。该task的优先级为`OLAP_TASK_PRIO`，同样地，task会被push到scheduler中，且只有所有task执行完后，其才会进行后续的输出。
 
@@ -313,9 +313,9 @@ std::shared_ptr<query_processor::ProjectionBreaker<TABLE_PARTITION_SIZE>> result
 
 最终，按照给出的plan，执行各operator即可。
 
-## 3. 代码修改
+## 3 代码修改
 
-### 3.1. 基数估计
+### 3.1 基数估计
 
 我们首先修改了`/home/flomige/src/query_processor/QueryOpitimizer.h`文件的基数估计部分。其中，具体修改了`estimateJoinSelectivity`与`estimateFilterCardinality`这两个函数，前者是估计join操作（例如，`stu.id = ta.id`）的基数，后者则是估计filter操作（例如，`ta.salary > 3000`）的基数。
 
@@ -478,7 +478,7 @@ void execute() {
 }
 ```
 
-#### 3.1.2. 基于join操作的基数估计
+#### 3.1.2 基于join操作的基数估计
 
 相应的，对于join操作，我们也可以使用**1-D Histogram**方法进行基数估计（即，认为要join的两列相互独立，即`P(AB) = P(A) * P(B)`），具体方法详见修改后的代码：
 
@@ -533,7 +533,7 @@ static double estimateJoinSelectivity(
 }
 ```
 
-### 3.2. 查询重写
+### 3.2 查询重写
 
 对于给出的查询我们可以进行重写，删除冗余join，增加筛选条件，使得执行树在接近叶结点的时候尽可能减少子任务的基数。由于原代码中只对查询进行解码并没有重写，因此我们完整实现了查询重写。
 
