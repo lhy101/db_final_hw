@@ -51,27 +51,38 @@ class QueryRunner {
 
                 void execute() {
                     // parse query
-                    QueryInfo queryInfo(_rawQuery);
+                    QueryInfo<TABLE_PARTITION_SIZE> queryInfo(_rawQuery, _database);
 
-                    // optimize and execute the query
-                    Executor executor;
-                    std::shared_ptr<query_processor::ProjectionBreaker<TABLE_PARTITION_SIZE>> resultBreaker
-                         = std::static_pointer_cast<query_processor::ProjectionBreaker<TABLE_PARTITION_SIZE>>(executor.execute(
-                            _database, queryInfo.getTables(), queryInfo.getInnerEquiJoins(), queryInfo.getProjections()));
-
-                    // get the checksum of the projection breaker
-                    std::vector<uint64_t> checksum;
-                    resultBreaker->getChecksum(checksum);
-                    // create the string output
                     std::string output;
-                    for (uint32_t i = 0; i < checksum.size(); ++i) {
-                        if (checksum[i] == 0) {
-                            output += "NULL";
-                        } else {
-                            output += std::to_string(checksum[i]);
+                    if (!queryInfo.isImpossible()) {
+                        // optimize and execute the query
+                        Executor executor;
+                        std::shared_ptr<query_processor::ProjectionBreaker<TABLE_PARTITION_SIZE>> resultBreaker
+                            = std::static_pointer_cast<query_processor::ProjectionBreaker<TABLE_PARTITION_SIZE>>(executor.execute(
+                                _database, queryInfo.getTables(), queryInfo.getInnerEquiJoins(), queryInfo.getProjections()));
+
+                        // get the checksum of the projection breaker
+                        std::vector<uint64_t> checksum;
+                        resultBreaker->getChecksum(checksum);
+                        
+                        // create the string output
+                        for (uint32_t i = 0; i < checksum.size(); ++i) {
+                            if (checksum[i] == 0) {
+                                output += "NULL";
+                            } else {
+                                output += std::to_string(checksum[i]);
+                            }
+                            if (i+1 < checksum.size()) {
+                                output += " ";
+                            }
                         }
-                        if (i+1 < checksum.size()) {
-                            output += " ";
+                    } else {
+                        uint32_t proj = queryInfo.getProjections().size();
+                        for (uint32_t i = 0; i < proj; ++i) {
+                            output += "NULL";
+                            if (i+1 < proj) {
+                                output += " ";
+                            }
                         }
                     }
                     _results.back()[_currentQueryId] = output;
