@@ -188,4 +188,15 @@ class FilterRewriter {
             
             return _impossible;
         }
+
+        std::vector<std::string>& rewriteProjections(std::string& rawProjections) {
+            std::vector<std::string> projectionStrings;
+            splitString(rawProjections, projectionStrings, ' ');
+            for (auto& projectionString : projectionStrings) {
+                if (_disjointCol.find(projectionString) != _disjointCol.end()) {
+                    projectionString = _disjointInt[_disjointCol[projectionString]][0];
+                }
+            }
+            return projectionStrings;
+        }
 };

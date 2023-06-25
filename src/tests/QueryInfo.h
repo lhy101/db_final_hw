@@ -73,9 +73,7 @@ class QueryInfo {
         }
 
         // parse selections r1.a r1.b r3.c...
-        void parseProjections(std::string& rawProjections) {
-            std::vector<std::string> projectionStrings;
-            splitString(rawProjections, projectionStrings, ' ');
+        void parseProjections(std::vector<std::string>& projectionStrings) {
             for (auto& rawSelect : projectionStrings) {
                 std::vector<std::string> projection;
                 splitString(rawSelect, projection, '.');
@@ -92,7 +90,6 @@ class QueryInfo {
             splitString(rawQuery, queryParts, '|');
             // assert(queryParts.size()==3);
             parseRelationIds(queryParts[0]);
-            parseProjections(queryParts[2]);
 
             FilterRewriter<TABLE_PARTITION_SIZE> rewriter(database, _tabAlias);
             std::vector<std::pair<std::string, std::string>> joins;
@@ -104,6 +101,9 @@ class QueryInfo {
             }
             parseJoinPredicates(joins);
             parseFilterPredicates(filters);
+            
+            parseProjections(rewriter.rewriteProjections(queryParts[2]))
+            parseProjections(queryParts[2]);
         }
 
     public:
