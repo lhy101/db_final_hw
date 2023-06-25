@@ -1,8 +1,8 @@
 # Spring 2023, DB Final Homework
 
-许珈铭、李昊洋
+许珈铭 2000012915、李昊洋 2000012918
 
-## 1 项目说明
+## 1. 项目说明
 
 我们已将环境与第五名的代码封装好，可以直接从docker上拉取：
 
@@ -16,9 +16,9 @@ docker pull lhygood11229/db_final_hw:1.0.0
 docker run -it --name hw lhygood11229/db_final_hw:1.0.0
 ```
 
-所有代码均已放在`/home`文件夹下，其中有两个子文件夹：`/home/submission`文件夹用于跑workload进行测试（默认跑`workload/small`，可以更改`./runTestharness.sh`来选择要跑的workload）；`/home/flomige/`则存放了我们修改后的排行榜第五的代码。
+所有代码均已放在`/home`文件夹下，其中有两个子文件夹：`/home/submission`文件夹用于跑workload进行测试（默认跑`workload/small`，可以更改`./runTestharness.sh`来选择要跑的workload）；`/home/flomige/`则存放了排行榜第五的源代码。
 
-我们也将代码的修改放到了GitHub上：[lhy101/db_final_hw: db_final_hw (github.com)](https://github.com/lhy101/db_final_hw)，也可以从上面直接拉取代码，并在自己的环境上进行测试。**即，用该repo替换**`/home/flomige`**目录即可**，注意拉取代码后要先编译（每次修改代码后，也需要再重新编译一遍）：
+我们将代码的修改放到了GitHub上：[lhy101/db_final_hw: db_final_hw (github.com)](https://github.com/lhy101/db_final_hw)，可以从上面拉取代码进行测试（commit里有我们对源码一步步的修改）。**如需在我们的容器上进行测试，请用该repo替换容器中的**`/home/flomige`**目录**，注意，运行代码前要先进行编译（每次修改代码后，也需要再重新编译一遍）：
 
 ```shell
 cd /home/flomige
@@ -38,9 +38,9 @@ execute small ...
 59
 ```
 
-## 2 代码解读
+## 2. 代码解读
 
-### 2.1 整体流程
+### 2.1. 整体流程
 
 代码的入口位于`tests\TestsProgrammingContest.cpp`。具体来看，整个pipeline可以分为以下三个部分：
 
@@ -99,7 +99,7 @@ execute small ...
       queryRunner.addQuery(database, line);
   }
   ```
-### 2.2 多线程
+### 2.2. 多线程
 
 由于该任务提供的机器是NUMA结构，为了充分利用机器上多核CPU的性能，代码采用了多线程的方式，通过pthread接口，在每个NUMA node上创建一个线程，来独立地进行处理。
 
@@ -203,7 +203,7 @@ for(std::shared_ptr<TaskBase>& task : _taskGroup._groupTasks){
 }
 ```
 
-### 2.3 预处理任务
+### 2.3. 预处理任务
 
 这一部分由计算table中每一列的**最大值**与**最小值**，以及**不重复的元素个数**这两个小部分构成。
 
@@ -256,7 +256,7 @@ void execute() {
 
 而计算不重复元素的`DistinctCalculationTask`与之十分类似，这里就不再赘述了。
 
-### 2.4 查询任务
+### 2.4. 查询任务
 
 对于查询任务，其将一组到输入`"F"`之前的query视作一个batch，而每行query则构成这一个batch中的独立的task。该task的优先级为`OLAP_TASK_PRIO`，同样地，task会被push到scheduler中，且只有所有task执行完后，其才会进行后续的输出。
 
@@ -313,13 +313,13 @@ std::shared_ptr<query_processor::ProjectionBreaker<TABLE_PARTITION_SIZE>> result
 
 最终，按照给出的plan，执行各operator即可。
 
-## 3 代码修改
+## 3. 代码修改
 
-### 3.1 基数估计
+### 3.1. 基数估计
 
 我们首先修改了`/home/flomige/src/query_processor/QueryOpitimizer.h`文件的基数估计部分。其中，具体修改了`estimateJoinSelectivity`与`estimateFilterCardinality`这两个函数，前者是估计join操作（例如，`stu.id = ta.id`）的基数，后者则是估计filter操作（例如，`ta.salary > 3000`）的基数。
 
-#### 3.1.1 基于filter操作的基数估计
+#### 3.1.1. 基于filter操作的基数估计
 
 以较为简单的`estimateFilterCardinality`为例，原代码的做法是在preprocess阶段得到每一列的min和max的value，以及非空元素的个数，然后简单地认为其符合均匀分布。于是，对于filter是`=`的情况，其直接将非空元素的个数除以`max - min`作为最终的基数估计。而对于filter是`<`或者`>`的情况，其将非空元素的个数乘以filter后的区间所占总的`max - min` 的区间的比例作为最终的基数估计。
 
@@ -478,7 +478,7 @@ void execute() {
 }
 ```
 
-#### 3.1.2 基于join操作的基数估计
+#### 3.1.2. 基于join操作的基数估计
 
 相应的，对于join操作，我们也可以使用**1-D Histogram**方法进行基数估计（即，认为要join的两列相互独立，即`P(AB) = P(A) * P(B)`），具体方法详见修改后的代码：
 
@@ -533,9 +533,9 @@ static double estimateJoinSelectivity(
 }
 ```
 
-### 3.2 查询重写
+### 3.2. 查询重写
 
-对于给出的查询我们可以进行重写，删除冗余join，增加筛选条件，使得执行树在接近叶结点的时候尽可能减少子任务的基数。由于原代码中只对查询进行解码并没有重写，因此我们完整实现了查询重写。
+对于给出的查询我们可以进行重写，删除冗余join，增加筛选条件，使得执行树在接近叶结点的时候尽可能减少子任务的基数。由于原先的代码中只对查询进行了解码，并没有重写，因此我们完整地实现了查询重写。
 
 ```c++
 struct Bound {
@@ -632,15 +632,15 @@ public:
 
 以下面的查询为例：
 
-1. 取值范围传播：通过 `join` 将很多列关联起来，条件可以在之间传播，由于R1和R2连接时要求 `R1.a = R2.b` 则 `R1.a` 和 `R2.b` 的取值范围都可以被重写为[9, 13]
-2. 条件传播：通过 `join` 将很多列关联起来，条件可以在之间传播，`R3.a > 5 AND R1.a > 3` 通过`R1.a = R2.b = R3.a` 的等式链传播，消除掉3的下界得到 `R1.a > 5 AND R2.c > 5 AND R3.a > 5`
-3. 投影传播：通过 `join` 将很多列关联起来，条件可以在之间传播，`R1.a = R2.b` 则投影时 `SUM(R1.a)` 和 `SUM(R2.b)` 值相等，则仅选取 `SUM(R1.a)` 进行计算
+1. 取值范围传播：通过 `join` 将很多列关联起来，条件可以在之间传播，由于R1和R2连接时要求 `R1.a = R2.b` 则 `R1.a` 和 `R2.b` 的取值范围都可以被重写为[9, 13]。
+2. 条件传播：通过 `join` 将很多列关联起来，条件可以在之间传播，`R3.a > 5 AND R1.a > 3` 通过`R1.a = R2.b = R3.a` 的等式链传播，消除掉3的下界得到 `R1.a > 5 AND R2.c > 5 AND R3.a > 5`。
+3. 投影传播：通过 `join` 将很多列关联起来，条件可以在之间传播，`R1.a = R2.b` 则投影时 `SUM(R1.a)` 和 `SUM(R2.b)` 值相等，则仅选取 `SUM(R1.a)` 进行计算。
 
 ![fig4](./fig/4.png)
 
-#### 3.2.1 取值范围传播
+#### 3.2.1. 取值范围传播
 
-我们使用并查集的算法实现 `join` 操作涉及列的聚类，并计算每类中所有列取值范围的交集作为该类的取值范围
+我们使用**并查集**的算法实现 `join` 操作涉及列的聚类，并计算每类中所有列取值范围的交集作为该类的取值范围。
 
 ```c++
 void disjointCols(std::string leftCol, std::string rightCol) {
@@ -686,9 +686,9 @@ void calJoinBound() {
 }
 ```
 
-#### 3.2.2 条件传播
+#### 3.2.2. 条件传播
 
-利用3.2.1中得到的列的聚类，进行 `filters` 的类间传播，对于没有分类的新列则重新分配一类
+我们利用3.2.1中得到的列的聚类，进行 `filters` 的类间传播，对于没有分类的新列则重新分配一类。
 
 ```c++
 void calFilterBound() {
@@ -731,7 +731,7 @@ void calFilterBound() {
 
 #### 3.2.3 投影传播
 
-利用3.2.1中得到的列的聚类，进行 `projections` 的类间传播，选择类的代表作为统一的投影对象，减少同质开销
+之后，我们利用3.2.1中得到的列的聚类，进行 `projections` 的类间传播，选择类的代表作为统一的投影对象，以减少同质开销。
 
 ```c++
 std::vector<std::string>& rewriteProjections(std::string& rawProjections) {
@@ -746,3 +746,21 @@ std::vector<std::string>& rewriteProjections(std::string& rawProjections) {
 }
 ```
 
+## 4. 实验结果
+
+我们在如下设备上进行了测试：
+
+```shell
+Processor: 12th Gen Intel(R) Core(TM) i9-12900HX (24 CPUs), ~2.3GHz
+Memory: 65536MB RAM
+```
+
+然而，在large与vLarge这两个workload上，我们并没有达到预期的优化效果。而在small与medium两个worload上，尽管有一定的提升，但提升的比率并未稳定地达到5%。
+
+以medium这一workload为例，下面两张图展示了我们优化前后的结果（进行了多次测量），可以看到其提升并不明显：
+
+<img src=".\fig\5.png" alt="5"  />
+
+<img src=".\fig\6.png" alt="6"  />
+
+尽管最终的实验结果并不理想，但我们从**基数估计**与**查询重写**两个方面进行了优化上的尝试，并仔细、深入地阅读了源代码，探讨了其背后使用的数据库的思想，这是一次十分宝贵的经历。
