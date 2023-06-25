@@ -73,7 +73,7 @@ class QueryInfo {
         }
 
         // parse selections r1.a r1.b r3.c...
-        void parseProjections(std::vector<std::string>& projectionStrings) {
+        void parseProjections(std::vector<std::string> projectionStrings) {
             for (auto& rawSelect : projectionStrings) {
                 std::vector<std::string> projection;
                 splitString(rawSelect, projection, '.');
@@ -103,7 +103,6 @@ class QueryInfo {
             parseFilterPredicates(filters);
             
             parseProjections(rewriter.rewriteProjections(queryParts[2]))
-            parseProjections(queryParts[2]);
         }
 
     public:

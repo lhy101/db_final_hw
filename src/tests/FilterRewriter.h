@@ -189,7 +189,7 @@ class FilterRewriter {
             return _impossible;
         }
 
-        std::vector<std::string>& rewriteProjections(std::string& rawProjections) {
+        std::vector<std::string> rewriteProjections(std::string& rawProjections) {
             std::vector<std::string> projectionStrings;
             splitString(rawProjections, projectionStrings, ' ');
             for (auto& projectionString : projectionStrings) {
